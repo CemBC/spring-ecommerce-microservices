@@ -110,6 +110,12 @@ public class ProductService {
         return productMapper.toResponse(product);
     }
 
+    @Transactional
+    public void delete(Long id) {
+        Product product = findProduct(id);
+        productRepository.delete(product);
+    }
+
     private Product findProduct(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(() ->new ResourceNotFoundException("Product not found with id: " + id)

@@ -8,6 +8,7 @@ import com.ecommerce.product_service.exception.ConflictException;
 import com.ecommerce.product_service.exception.ResourceNotFoundException;
 import com.ecommerce.product_service.mapper.CategoryMapper;
 import com.ecommerce.product_service.repository.CategoryRepository;
+import com.ecommerce.product_service.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,13 +19,14 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final CategoryMapper categoryMapper;
-
+    private final ProductRepository productRepository;
     public CategoryService(
             CategoryRepository categoryRepository,
-            CategoryMapper categoryMapper
+            CategoryMapper categoryMapper, ProductRepository productRepository
     ) {
         this.categoryRepository = categoryRepository;
         this.categoryMapper = categoryMapper;
+        this.productRepository = productRepository;
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +82,20 @@ public class CategoryService {
 
         return categoryMapper.toResponse(category);
     }
+
+    @Transactional
+    public void delete(Long id) {
+        Category category = findCategory(id);
+
+        if (productRepository.existsByCategoryId(id)) {
+            throw new ConflictException(
+                    "Category cannot be deleted because it contains products"
+            );
+        }
+
+        categoryRepository.delete(category);
+    }
+
 
     private Category findCategory(Long id) {
         return categoryRepository.findById(id)
