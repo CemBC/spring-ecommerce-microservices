@@ -4,23 +4,6 @@ Inventory Service is a Spring Boot microservice responsible for managing product
 
 It provides stock management, reservations, validation, filtering, pagination, database migrations, health checks, OpenAPI documentation, and automated tests.
 
-## Tech Stack
-
-- Java 21
-- Spring Boot 4.1.1
-- Spring Web MVC
-- Spring Data JPA
-- Hibernate
-- PostgreSQL
-- Flyway
-- Lombok
-- Jakarta Validation
-- Spring Boot Actuator
-- OpenAPI
-- JUnit 5
-- Mockito
-- Testcontainers
-- Maven
 
 ## Features
 
