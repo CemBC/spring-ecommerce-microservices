@@ -9,6 +9,8 @@ import com.ecommerce.product_service.exception.ResourceNotFoundException;
 import com.ecommerce.product_service.mapper.CategoryMapper;
 import com.ecommerce.product_service.repository.CategoryRepository;
 import com.ecommerce.product_service.repository.ProductRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,11 +32,23 @@ public class CategoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<CategoryResponse> getAll() {
-        return categoryRepository.findAll()
-                .stream()
-                .map(categoryMapper::toResponse)
-                .toList();
+    public Page<CategoryResponse> getAll(
+            String name,
+            Pageable pageable
+    ) {
+        Page<Category> categories;
+
+        if (name == null || name.isBlank()) {
+            categories = categoryRepository.findAll(pageable);
+        } else {
+            categories =
+                    categoryRepository.findByNameContainingIgnoreCase(
+                            name,
+                            pageable
+                    );
+        }
+
+        return categories.map(categoryMapper::toResponse);
     }
 
     @Transactional(readOnly = true)

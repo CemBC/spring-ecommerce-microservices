@@ -10,9 +10,12 @@ import com.ecommerce.product_service.exception.ResourceNotFoundException;
 import com.ecommerce.product_service.mapper.ProductMapper;
 import com.ecommerce.product_service.repository.CategoryRepository;
 import com.ecommerce.product_service.repository.ProductRepository;
+import com.ecommerce.product_service.specification.ProductSpecification;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 
 @Service
@@ -33,11 +36,20 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProductResponse> getAll() {
-        return productRepository.findAll()
-                .stream()
-                .map(productMapper::toResponse)
-                .toList();
+    public Page<ProductResponse> getAll(
+            String name,
+            Long categoryId,
+            Boolean active,
+            Pageable pageable
+    ) {
+        Specification<Product> specification =
+                ProductSpecification.nameContains(name)
+                        .and(ProductSpecification.hasCategory(categoryId))
+                        .and(ProductSpecification.isActive(active));
+
+        return productRepository
+                .findAll(specification, pageable)
+                .map(productMapper::toResponse);
     }
 
     @Transactional(readOnly = true)

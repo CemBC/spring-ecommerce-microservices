@@ -5,6 +5,9 @@ import com.ecommerce.product_service.dto.ProductResponse;
 import com.ecommerce.product_service.dto.UpdateProductRequest;
 import com.ecommerce.product_service.service.ProductService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +25,19 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<ProductResponse> getAll() {
-        return productService.getAll();
+    public Page<ProductResponse> getAll(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Boolean active,
+            @PageableDefault(size = 10, sort = "id")
+            Pageable pageable
+    ) {
+        return productService.getAll(
+                name,
+                categoryId,
+                active,
+                pageable
+        );
     }
 
     @GetMapping("/{id}")
