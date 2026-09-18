@@ -1,10 +1,15 @@
 package com.ecommerce.payment_service.service;
 
-import com.ecommerce.payment_service.dto.*;
+import com.ecommerce.payment_service.client.OrderClient;
+import com.ecommerce.payment_service.client.dto.OrderSnapshotResponse;
+import com.ecommerce.payment_service.dto.CreatePaymentRequest;
+import com.ecommerce.payment_service.dto.FailPaymentRequest;
+import com.ecommerce.payment_service.dto.PaymentResponse;
 import com.ecommerce.payment_service.entity.Payment;
 import com.ecommerce.payment_service.entity.PaymentStatus;
 import com.ecommerce.payment_service.exception.BadRequestException;
 import com.ecommerce.payment_service.exception.ConflictException;
+import com.ecommerce.payment_service.exception.DownstreamServiceUnavailableException;
 import com.ecommerce.payment_service.exception.ResourceNotFoundException;
 import com.ecommerce.payment_service.mapper.PaymentMapper;
 import com.ecommerce.payment_service.repository.PaymentRepository;
@@ -26,6 +31,7 @@ import java.util.UUID;
 public class PaymentService {
 
     private static final String MOCK_PROVIDER = "MOCK";
+    private static final String PAYABLE_ORDER_STATUS = "PENDING";
 
     private static final Set<PaymentStatus> NON_RETRYABLE_STATUSES =
             EnumSet.of(
@@ -37,32 +43,67 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final PaymentMapper paymentMapper;
+    private final OrderClient orderClient;
 
     public PaymentService(
             PaymentRepository paymentRepository,
-            PaymentMapper paymentMapper
+            PaymentMapper paymentMapper,
+            OrderClient orderClient
     ) {
         this.paymentRepository = paymentRepository;
         this.paymentMapper = paymentMapper;
+        this.orderClient = orderClient;
     }
 
     @Transactional
-    public PaymentResponse create(CreatePaymentRequest request) {
-        if (paymentRepository.existsByOrderIdAndStatusIn(
-                request.orderId(),
-                NON_RETRYABLE_STATUSES
-        )) {
+    public PaymentResponse create(
+            CreatePaymentRequest request
+    ) {
+        if (paymentRepository
+                .existsByOrderIdAndStatusIn(
+                        request.orderId(),
+                        NON_RETRYABLE_STATUSES
+                )) {
             throw new ConflictException(
                     "A non-retryable payment already exists for order id: "
                             + request.orderId()
             );
         }
 
+        OrderSnapshotResponse order =
+                orderClient.getOrder(
+                        request.orderId()
+                );
+
+        if (!PAYABLE_ORDER_STATUS.equals(
+                order.status()
+        )) {
+            throw new ConflictException(
+                    "Only PENDING orders can be paid"
+            );
+        }
+
+        if (order.userId() == null
+                || order.totalAmount() == null
+                || order.totalAmount()
+                .compareTo(BigDecimal.ZERO) <= 0) {
+            throw new DownstreamServiceUnavailableException(
+                    "Order Service returned invalid order data for id: "
+                            + request.orderId()
+            );
+        }
+
         Payment payment = Payment.builder()
-                .orderId(request.orderId())
-                .userId(request.userId())
-                .amount(money(request.amount()))
-                .currency(request.currency().trim().toUpperCase())
+                .orderId(order.id())
+                .userId(order.userId())
+                .amount(
+                        money(order.totalAmount())
+                )
+                .currency(
+                        request.currency()
+                                .trim()
+                                .toUpperCase()
+                )
                 .status(PaymentStatus.PENDING)
                 .provider(MOCK_PROVIDER)
                 .build();
@@ -74,18 +115,26 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentResponse getById(Long id) {
-        return paymentMapper.toResponse(findPayment(id));
+        return paymentMapper.toResponse(
+                findPayment(id)
+        );
     }
 
     @Transactional(readOnly = true)
-    public PaymentResponse getLatestByOrderId(Long orderId) {
-        Payment payment = paymentRepository
-                .findTopByOrderIdOrderByCreatedAtDesc(orderId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Payment not found for order id: " + orderId
+    public PaymentResponse getLatestByOrderId(
+            Long orderId
+    ) {
+        Payment payment =
+                paymentRepository
+                        .findTopByOrderIdOrderByCreatedAtDesc(
+                                orderId
                         )
-                );
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Payment not found for order id: "
+                                                + orderId
+                                )
+                        );
 
         return paymentMapper.toResponse(payment);
     }
@@ -111,15 +160,35 @@ public class PaymentService {
         Specification<Payment> specification =
                 PaymentSpecification
                         .hasOrderId(orderId)
-                        .and(PaymentSpecification.hasUserId(userId))
-                        .and(PaymentSpecification.hasStatus(status))
-                        .and(PaymentSpecification.hasCurrency(currency))
-                        .and(PaymentSpecification.createdFrom(createdFrom))
-                        .and(PaymentSpecification.createdTo(createdTo));
+                        .and(
+                                PaymentSpecification
+                                        .hasUserId(userId)
+                        )
+                        .and(
+                                PaymentSpecification
+                                        .hasStatus(status)
+                        )
+                        .and(
+                                PaymentSpecification
+                                        .hasCurrency(currency)
+                        )
+                        .and(
+                                PaymentSpecification
+                                        .createdFrom(createdFrom)
+                        )
+                        .and(
+                                PaymentSpecification
+                                        .createdTo(createdTo)
+                        );
 
         return paymentRepository
-                .findAll(specification, pageable)
-                .map(paymentMapper::toResponse);
+                .findAll(
+                        specification,
+                        pageable
+                )
+                .map(
+                        paymentMapper::toResponse
+                );
     }
 
     @Transactional
@@ -132,10 +201,14 @@ public class PaymentService {
                 "Only PENDING payments can be processed"
         );
 
-        payment.setStatus(PaymentStatus.PROCESSING);
+        payment.setStatus(
+                PaymentStatus.PROCESSING
+        );
+
         payment.setFailureReason(null);
 
-        if (payment.getTransactionReference() == null) {
+        if (payment.getTransactionReference()
+                == null) {
             payment.setTransactionReference(
                     generateTransactionReference()
             );
@@ -154,7 +227,14 @@ public class PaymentService {
                 "Only PROCESSING payments can succeed"
         );
 
-        payment.setStatus(PaymentStatus.SUCCEEDED);
+        orderClient.confirmOrder(
+                payment.getOrderId()
+        );
+
+        payment.setStatus(
+                PaymentStatus.SUCCEEDED
+        );
+
         payment.setFailureReason(null);
 
         return paymentMapper.toResponse(payment);
@@ -173,7 +253,10 @@ public class PaymentService {
                 "Only PROCESSING payments can fail"
         );
 
-        payment.setStatus(PaymentStatus.FAILED);
+        payment.setStatus(
+                PaymentStatus.FAILED
+        );
+
         payment.setFailureReason(
                 request.failureReason().trim()
         );
@@ -191,7 +274,9 @@ public class PaymentService {
                 "Only PENDING payments can be cancelled"
         );
 
-        payment.setStatus(PaymentStatus.CANCELLED);
+        payment.setStatus(
+                PaymentStatus.CANCELLED
+        );
 
         return paymentMapper.toResponse(payment);
     }
@@ -206,7 +291,9 @@ public class PaymentService {
                 "Only SUCCEEDED payments can be refunded"
         );
 
-        payment.setStatus(PaymentStatus.REFUNDED);
+        payment.setStatus(
+                PaymentStatus.REFUNDED
+        );
 
         return paymentMapper.toResponse(payment);
     }
@@ -216,7 +303,8 @@ public class PaymentService {
                 .findById(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Payment not found with id: " + id
+                                "Payment not found with id: "
+                                        + id
                         )
                 );
     }
@@ -226,7 +314,8 @@ public class PaymentService {
             PaymentStatus expected,
             String message
     ) {
-        if (payment.getStatus() != expected) {
+        if (payment.getStatus()
+                != expected) {
             throw new ConflictException(message);
         }
     }
@@ -235,15 +324,25 @@ public class PaymentService {
         String reference;
 
         do {
-            reference = "PAY-" + UUID.randomUUID();
+            reference =
+                    "PAY-" + UUID.randomUUID();
+
         } while (
-                paymentRepository.existsByTransactionReference(reference)
+                paymentRepository
+                        .existsByTransactionReference(
+                                reference
+                        )
         );
 
         return reference;
     }
 
-    private BigDecimal money(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
+    private BigDecimal money(
+            BigDecimal value
+    ) {
+        return value.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
     }
 }

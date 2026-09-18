@@ -37,8 +37,6 @@ class PaymentControllerTest {
         CreatePaymentRequest request =
                 new CreatePaymentRequest(
                         42L,
-                        5L,
-                        new BigDecimal("93500.00"),
                         "TRY"
                 );
 
@@ -58,57 +56,91 @@ class PaymentControllerTest {
                         LocalDateTime.now()
                 );
 
-        when(paymentService.create(any(CreatePaymentRequest.class)))
-                .thenReturn(response);
+        when(
+                paymentService.create(
+                        any(CreatePaymentRequest.class)
+                )
+        ).thenReturn(response);
 
         mockMvc.perform(
                         post("/api/payments")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(
-                                        objectMapper.writeValueAsString(request)
+                                        objectMapper
+                                                .writeValueAsString(
+                                                        request
+                                                )
                                 )
                 )
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.orderId").value(42))
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.currency").value("TRY"));
+                .andExpect(
+                        status().isCreated()
+                )
+                .andExpect(
+                        jsonPath("$.orderId")
+                                .value(42)
+                )
+                .andExpect(
+                        jsonPath("$.userId")
+                                .value(5)
+                )
+                .andExpect(
+                        jsonPath("$.amount")
+                                .value(93500.00)
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("PENDING")
+                )
+                .andExpect(
+                        jsonPath("$.currency")
+                                .value("TRY")
+                );
     }
 
     @Test
-    void shouldRejectZeroAmount() throws Exception {
+    void shouldRejectMissingOrderId()
+            throws Exception {
+
         String body = """
                 {
-                  "orderId": 42,
-                  "userId": 5,
-                  "amount": 0,
                   "currency": "TRY"
                 }
                 """;
 
         mockMvc.perform(
                         post("/api/payments")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(body)
                 )
-                .andExpect(status().isBadRequest());
+                .andExpect(
+                        status().isBadRequest()
+                );
     }
 
     @Test
-    void shouldRejectInvalidCurrency() throws Exception {
+    void shouldRejectInvalidCurrency()
+            throws Exception {
+
         String body = """
                 {
                   "orderId": 42,
-                  "userId": 5,
-                  "amount": 100,
                   "currency": "TL"
                 }
                 """;
 
         mockMvc.perform(
                         post("/api/payments")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(body)
                 )
-                .andExpect(status().isBadRequest());
+                .andExpect(
+                        status().isBadRequest()
+                );
     }
 }

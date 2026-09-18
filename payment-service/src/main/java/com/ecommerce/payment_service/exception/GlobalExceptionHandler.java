@@ -30,6 +30,16 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(DownstreamServiceUnavailableException.class)
+    public ResponseEntity<ApiError> handleDownstreamUnavailable(
+            DownstreamServiceUnavailableException ex
+    ) {
+        return build(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ex.getMessage()
+        );
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiError> handleOptimisticLock(
             ObjectOptimisticLockingFailureException ex

@@ -1,23 +1,14 @@
 package com.ecommerce.order_service.dto;
 
-import jakarta.validation.constraints.*;
-
-import java.math.BigDecimal;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 public record CreateOrderItemRequest(
         @NotNull
         Long productId,
 
-        @NotBlank
-        @Size(max = 200)
-        String productName,
-
         @NotNull
         @Positive
-        Integer quantity,
-
-        @NotNull
-        @DecimalMin("0.01")
-        BigDecimal unitPrice
+        Integer quantity
 ) {
 }

@@ -1,13 +1,14 @@
 package com.ecommerce.payment_service.dto;
 
-import jakarta.validation.constraints.*;
-
-import java.math.BigDecimal;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 
 public record CreatePaymentRequest(
         @NotNull Long orderId,
-        @NotNull Long userId,
-        @NotNull @DecimalMin("0.01") BigDecimal amount,
-        @NotBlank @Pattern(regexp = "^[A-Za-z]{3}$") String currency
+
+        @NotBlank
+        @Pattern(regexp = "^[A-Za-z]{3}$")
+        String currency
 ) {
 }

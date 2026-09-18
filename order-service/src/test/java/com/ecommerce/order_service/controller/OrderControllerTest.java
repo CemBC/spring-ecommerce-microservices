@@ -40,9 +40,7 @@ class OrderControllerTest {
                         List.of(
                                 new CreateOrderItemRequest(
                                         1L,
-                                        "MacBook Air M3",
-                                        2,
-                                        new BigDecimal("45000")
+                                        2
                                 )
                         )
                 );
@@ -67,22 +65,39 @@ class OrderControllerTest {
                         LocalDateTime.now()
                 );
 
-        when(orderService.create(any(CreateOrderRequest.class)))
-                .thenReturn(response);
+        when(
+                orderService.create(
+                        any(CreateOrderRequest.class)
+                )
+        ).thenReturn(response);
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(
-                                        objectMapper.writeValueAsString(
-                                                request
-                                        )
+                                        objectMapper
+                                                .writeValueAsString(
+                                                        request
+                                                )
                                 )
                 )
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalAmount").value(90000.00));
+                .andExpect(
+                        status().isCreated()
+                )
+                .andExpect(
+                        jsonPath("$.id")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("PENDING")
+                )
+                .andExpect(
+                        jsonPath("$.totalAmount")
+                                .value(90000.00)
+                );
     }
 
     @Test
@@ -96,10 +111,14 @@ class OrderControllerTest {
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(body)
                 )
-                .andExpect(status().isBadRequest());
+                .andExpect(
+                        status().isBadRequest()
+                );
     }
 
     @Test
@@ -110,9 +129,7 @@ class OrderControllerTest {
                   "items": [
                     {
                       "productId": 1,
-                      "productName": "MacBook",
-                      "quantity": 0,
-                      "unitPrice": 45000
+                      "quantity": 0
                     }
                   ]
                 }
@@ -120,9 +137,13 @@ class OrderControllerTest {
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content(body)
                 )
-                .andExpect(status().isBadRequest());
+                .andExpect(
+                        status().isBadRequest()
+                );
     }
 }

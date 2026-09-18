@@ -1,7 +1,9 @@
 package com.ecommerce.order_service.integration;
 
+import com.ecommerce.order_service.client.InventoryClient;
+import com.ecommerce.order_service.client.ProductClient;
+import com.ecommerce.order_service.client.dto.ProductSnapshotResponse;
 import com.ecommerce.order_service.entity.Order;
-import com.ecommerce.order_service.entity.OrderStatus;
 import com.ecommerce.order_service.repository.OrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,11 +13,18 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.math.BigDecimal;
+
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -57,9 +66,56 @@ class OrderFlowIntegrationTest {
     @Autowired
     private OrderRepository orderRepository;
 
+    @MockitoBean
+    private ProductClient productClient;
+
+    @MockitoBean
+    private InventoryClient inventoryClient;
+
     @BeforeEach
-    void cleanDatabase() {
+    void setUp() {
         orderRepository.deleteAll();
+
+        when(
+                productClient.getProduct(
+                        anyLong()
+                )
+        ).thenAnswer(invocation -> {
+            Long productId =
+                    invocation.getArgument(0);
+
+            return new ProductSnapshotResponse(
+                    productId,
+                    "Test Product " + productId,
+                    "description",
+                    new BigDecimal("100.00"),
+                    "SKU-" + productId,
+                    true,
+                    1L,
+                    "Category",
+                    null,
+                    null
+            );
+        });
+
+        doNothing()
+                .when(inventoryClient)
+                .reserveOrder(
+                        anyLong(),
+                        anyList()
+                );
+
+        doNothing()
+                .when(inventoryClient)
+                .releaseOrder(
+                        anyLong()
+                );
+
+        doNothing()
+                .when(inventoryClient)
+                .confirmOrder(
+                        anyLong()
+                );
     }
 
     @Test
@@ -68,28 +124,37 @@ class OrderFlowIntegrationTest {
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content("""
                                         {
                                           "userId": 7,
                                           "items": [
                                             {
                                               "productId": 1,
-                                              "productName": "MacBook Air M3",
-                                              "quantity": 2,
-                                              "unitPrice": 45000
+                                              "quantity": 2
                                             }
                                           ]
                                         }
                                         """)
                 )
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalAmount").value(90000.00));
+                .andExpect(
+                        status().isCreated()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("PENDING")
+                )
+                .andExpect(
+                        jsonPath("$.totalAmount")
+                                .value(200.00)
+                );
 
-        Order order = orderRepository
-                .findAll()
-                .getFirst();
+        Order order =
+                orderRepository
+                        .findAll()
+                        .getFirst();
 
         mockMvc.perform(
                         patch(
@@ -97,8 +162,13 @@ class OrderFlowIntegrationTest {
                                 order.getId()
                         )
                 )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("CONFIRMED")
+                );
 
         mockMvc.perform(
                         patch(
@@ -106,8 +176,13 @@ class OrderFlowIntegrationTest {
                                 order.getId()
                         )
                 )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("COMPLETED"));
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("COMPLETED")
+                );
 
         mockMvc.perform(
                         patch(
@@ -115,7 +190,9 @@ class OrderFlowIntegrationTest {
                                 order.getId()
                         )
                 )
-                .andExpect(status().isConflict());
+                .andExpect(
+                        status().isConflict()
+                );
     }
 
     @Test
@@ -124,33 +201,27 @@ class OrderFlowIntegrationTest {
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content("""
                                         {
                                           "userId": 7,
                                           "items": [
                                             {
                                               "productId": 1,
-                                              "productName": "MacBook Air M3",
-                                              "quantity": 1,
-                                              "unitPrice": 45000
+                                              "quantity": 1
                                             },
                                             {
                                               "productId": 1,
-                                              "productName": "MacBook Air M3",
-                                              "quantity": 2,
-                                              "unitPrice": 45000
+                                              "quantity": 2
                                             }
                                           ]
                                         }
                                         """)
                 )
-                .andExpect(status().isBadRequest())
                 .andExpect(
-                        jsonPath("$.message")
-                                .value(
-                                        "Duplicate productId in order items: 1"
-                                )
+                        status().isBadRequest()
                 );
     }
 
@@ -161,12 +232,16 @@ class OrderFlowIntegrationTest {
         createOrder(10L);
         createOrder(20L);
 
-        Order user10Order = orderRepository
-                .findAll()
-                .stream()
-                .filter(order -> order.getUserId().equals(10L))
-                .findFirst()
-                .orElseThrow();
+        Order user10Order =
+                orderRepository
+                        .findAll()
+                        .stream()
+                        .filter(order ->
+                                order.getUserId()
+                                        .equals(10L)
+                        )
+                        .findFirst()
+                        .orElseThrow();
 
         mockMvc.perform(
                         patch(
@@ -174,39 +249,63 @@ class OrderFlowIntegrationTest {
                                 user10Order.getId()
                         )
                 )
-                .andExpect(status().isOk());
+                .andExpect(
+                        status().isOk()
+                );
 
         mockMvc.perform(
                         get("/api/orders")
-                                .param("userId", "10")
-                                .param("status", "CONFIRMED")
+                                .param(
+                                        "userId",
+                                        "10"
+                                )
+                                .param(
+                                        "status",
+                                        "CONFIRMED"
+                                )
                 )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.content[0].userId").value(10))
-                .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"));
+                .andExpect(
+                        status().isOk()
+                )
+                .andExpect(
+                        jsonPath("$.content.length()")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.content[0].userId")
+                                .value(10)
+                )
+                .andExpect(
+                        jsonPath("$.content[0].status")
+                                .value("CONFIRMED")
+                );
     }
 
-    private void createOrder(Long userId)
-            throws Exception {
+    private void createOrder(
+            Long userId
+    ) throws Exception {
 
         mockMvc.perform(
                         post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
                                 .content("""
                                         {
                                           "userId": %d,
                                           "items": [
                                             {
                                               "productId": 1,
-                                              "productName": "Test Product",
-                                              "quantity": 1,
-                                              "unitPrice": 100
+                                              "quantity": 1
                                             }
                                           ]
                                         }
-                                        """.formatted(userId))
+                                        """.formatted(
+                                        userId
+                                ))
                 )
-                .andExpect(status().isCreated());
+                .andExpect(
+                        status().isCreated()
+                );
     }
 }

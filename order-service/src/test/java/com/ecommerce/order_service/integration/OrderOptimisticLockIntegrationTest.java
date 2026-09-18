@@ -39,10 +39,12 @@ class OrderOptimisticLockIntegrationTest {
                 "spring.datasource.url",
                 postgres::getJdbcUrl
         );
+
         registry.add(
                 "spring.datasource.username",
                 postgres::getUsername
         );
+
         registry.add(
                 "spring.datasource.password",
                 postgres::getPassword
@@ -56,35 +58,57 @@ class OrderOptimisticLockIntegrationTest {
     void shouldRejectStaleConcurrentOrderUpdate() {
         Long orderId = createOrder();
 
-        EntityManager first = entityManagerFactory.createEntityManager();
-        EntityManager second = entityManagerFactory.createEntityManager();
+        EntityManager first =
+                entityManagerFactory.createEntityManager();
+
+        EntityManager second =
+                entityManagerFactory.createEntityManager();
 
         try {
             first.getTransaction().begin();
             second.getTransaction().begin();
 
-            Order firstCopy = first.find(Order.class, orderId);
-            Order secondCopy = second.find(Order.class, orderId);
+            Order firstCopy =
+                    first.find(
+                            Order.class,
+                            orderId
+                    );
 
-            firstCopy.setStatus(OrderStatus.CONFIRMED);
+            Order secondCopy =
+                    second.find(
+                            Order.class,
+                            orderId
+                    );
+
+            firstCopy.setStatus(
+                    OrderStatus.CONFIRMED
+            );
+
             first.getTransaction().commit();
 
-            secondCopy.setStatus(OrderStatus.CANCELLED);
+            secondCopy.setStatus(
+                    OrderStatus.CANCELLED
+            );
 
             RollbackException exception =
                     assertThrows(
                             RollbackException.class,
-                            () -> second.getTransaction().commit()
+                            () ->
+                                    second
+                                            .getTransaction()
+                                            .commit()
                     );
 
             assertInstanceOf(
                     OptimisticLockException.class,
                     exception.getCause()
             );
+
         } finally {
             if (first.getTransaction().isActive()) {
                 first.getTransaction().rollback();
             }
+
             if (second.getTransaction().isActive()) {
                 second.getTransaction().rollback();
             }
@@ -96,7 +120,8 @@ class OrderOptimisticLockIntegrationTest {
 
     private Long createOrder() {
         EntityManager entityManager =
-                entityManagerFactory.createEntityManager();
+                entityManagerFactory
+                        .createEntityManager();
 
         try {
             entityManager.getTransaction().begin();
@@ -104,13 +129,19 @@ class OrderOptimisticLockIntegrationTest {
             Order order = Order.builder()
                     .userId(1L)
                     .status(OrderStatus.PENDING)
-                    .totalAmount(new BigDecimal("100.00"))
+                    .totalAmount(
+                            new BigDecimal("100.00")
+                    )
                     .build();
 
             entityManager.persist(order);
-            entityManager.getTransaction().commit();
+
+            entityManager
+                    .getTransaction()
+                    .commit();
 
             return order.getId();
+
         } finally {
             entityManager.close();
         }
