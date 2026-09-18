@@ -49,6 +49,14 @@ public class StockReservationController {
                 .confirmByOrderId(orderId);
     }
 
+    @PostMapping("/{orderId}/compensate")
+    public List<StockReservationResponse> compensate(
+            @PathVariable Long orderId
+    ) {
+        return reservationService
+                .compensateByOrderId(orderId);
+    }
+
     @GetMapping("/order/{orderId}")
     public List<StockReservationResponse> getByOrderId(
             @PathVariable Long orderId

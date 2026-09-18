@@ -15,8 +15,10 @@ import com.ecommerce.order_service.exception.ConflictException;
 import com.ecommerce.order_service.exception.DownstreamServiceUnavailableException;
 import com.ecommerce.order_service.exception.ResourceNotFoundException;
 import com.ecommerce.order_service.mapper.OrderMapper;
+import com.ecommerce.order_service.outbox.OutboxService;
 import com.ecommerce.order_service.repository.OrderRepository;
 import com.ecommerce.order_service.specification.OrderSpecification;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,6 +29,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -36,6 +40,8 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
+
+    private OutboxService outboxService;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -47,6 +53,13 @@ public class OrderService {
         this.orderMapper = orderMapper;
         this.productClient = productClient;
         this.inventoryClient = inventoryClient;
+    }
+
+    @Autowired(required = false)
+    void setOutboxService(
+            OutboxService outboxService
+    ) {
+        this.outboxService = outboxService;
     }
 
     @Transactional
@@ -135,6 +148,11 @@ public class OrderService {
                 request.items()
         );
 
+        emit(
+                saved,
+                "ORDER_CREATED"
+        );
+
         return orderMapper.toResponse(saved);
     }
 
@@ -212,18 +230,17 @@ public class OrderService {
             );
         }
 
-        /*
-         * Inventory is confirmed BEFORE the local Order status changes.
-         *
-         * If Inventory rejects the confirmation or is unavailable,
-         * this method throws and the local Order remains PENDING.
-         */
         inventoryClient.confirmOrder(
                 order.getId()
         );
 
         order.setStatus(
                 OrderStatus.CONFIRMED
+        );
+
+        emit(
+                order,
+                "ORDER_CONFIRMED"
         );
 
         return orderMapper.toResponse(order);
@@ -242,6 +259,11 @@ public class OrderService {
 
         order.setStatus(
                 OrderStatus.COMPLETED
+        );
+
+        emit(
+                order,
+                "ORDER_COMPLETED"
         );
 
         return orderMapper.toResponse(order);
@@ -265,11 +287,6 @@ public class OrderService {
             );
         }
 
-        /*
-         * A CONFIRMED order has already consumed stock.
-         * Releasing a confirmed reservation here would not restore quantity,
-         * so this synchronous flow only allows cancellation while PENDING.
-         */
         if (order.getStatus()
                 != OrderStatus.PENDING) {
             throw new ConflictException(
@@ -285,7 +302,49 @@ public class OrderService {
                 OrderStatus.CANCELLED
         );
 
+        emit(
+                order,
+                "ORDER_CANCELLED"
+        );
+
         return orderMapper.toResponse(order);
+    }
+
+    private void emit(
+            Order order,
+            String eventType
+    ) {
+        if (outboxService == null) {
+            return;
+        }
+
+        Map<String, Object> payload =
+                new LinkedHashMap<>();
+
+        payload.put(
+                "orderId",
+                order.getId()
+        );
+        payload.put(
+                "userId",
+                order.getUserId()
+        );
+        payload.put(
+                "status",
+                order.getStatus().name()
+        );
+        payload.put(
+                "totalAmount",
+                order.getTotalAmount()
+        );
+
+        outboxService.enqueue(
+                "order.events",
+                "Order",
+                order.getId(),
+                eventType,
+                payload
+        );
     }
 
     private void validateNoDuplicateProducts(

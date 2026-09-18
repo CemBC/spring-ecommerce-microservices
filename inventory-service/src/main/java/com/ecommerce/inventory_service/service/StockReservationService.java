@@ -9,15 +9,19 @@ import com.ecommerce.inventory_service.entity.StockReservation;
 import com.ecommerce.inventory_service.exception.ConflictException;
 import com.ecommerce.inventory_service.exception.InsufficientStockException;
 import com.ecommerce.inventory_service.exception.ResourceNotFoundException;
+import com.ecommerce.inventory_service.outbox.OutboxService;
 import com.ecommerce.inventory_service.repository.InventoryRepository;
 import com.ecommerce.inventory_service.repository.StockReservationRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -26,12 +30,21 @@ public class StockReservationService {
     private final InventoryRepository inventoryRepository;
     private final StockReservationRepository reservationRepository;
 
+    private OutboxService outboxService;
+
     public StockReservationService(
             InventoryRepository inventoryRepository,
             StockReservationRepository reservationRepository
     ) {
         this.inventoryRepository = inventoryRepository;
         this.reservationRepository = reservationRepository;
+    }
+
+    @Autowired(required = false)
+    void setOutboxService(
+            OutboxService outboxService
+    ) {
+        this.outboxService = outboxService;
     }
 
     @Transactional
@@ -102,9 +115,16 @@ public class StockReservationService {
             );
         }
 
-        return reservationRepository
-                .saveAll(created)
-                .stream()
+        List<StockReservation> saved =
+                reservationRepository.saveAll(created);
+
+        emit(
+                request.orderId(),
+                "INVENTORY_RESERVED",
+                saved
+        );
+
+        return saved.stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -151,8 +171,15 @@ public class StockReservationService {
             );
         }
 
-        return reservations
-                .stream()
+        if (!reservations.isEmpty()) {
+            emit(
+                    orderId,
+                    "INVENTORY_RELEASED",
+                    reservations
+            );
+        }
+
+        return reservations.stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -206,8 +233,93 @@ public class StockReservationService {
             );
         }
 
-        return reservations
-                .stream()
+        if (!reservations.isEmpty()) {
+            emit(
+                    orderId,
+                    "INVENTORY_CONFIRMED",
+                    reservations
+            );
+        }
+
+        return reservations.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public List<StockReservationResponse> compensateByOrderId(
+            Long orderId
+    ) {
+        List<StockReservation> reservations =
+                reservationRepository
+                        .findByOrderIdOrderByProductIdAsc(
+                                orderId
+                        );
+
+        List<StockReservation> compensated =
+                new ArrayList<>();
+
+        for (StockReservation reservation : reservations) {
+            if (reservation.getStatus()
+                    == ReservationStatus.COMPENSATED
+                    || reservation.getStatus()
+                    == ReservationStatus.RELEASED) {
+                continue;
+            }
+
+            Inventory inventory =
+                    inventoryRepository
+                            .findByProductIdForUpdate(
+                                    reservation.getProductId()
+                            )
+                            .orElseThrow(() ->
+                                    new ResourceNotFoundException(
+                                            "Inventory not found for product id: "
+                                                    + reservation.getProductId()
+                                    )
+                            );
+
+            if (reservation.getStatus()
+                    == ReservationStatus.RESERVED) {
+
+                if (inventory.getReservedQuantity()
+                        < reservation.getQuantity()) {
+                    throw new ConflictException(
+                            "Reserved stock is inconsistent for product id: "
+                                    + reservation.getProductId()
+                    );
+                }
+
+                inventory.setReservedQuantity(
+                        inventory.getReservedQuantity()
+                                - reservation.getQuantity()
+                );
+
+            } else if (reservation.getStatus()
+                    == ReservationStatus.CONFIRMED) {
+
+                inventory.setQuantity(
+                        inventory.getQuantity()
+                                + reservation.getQuantity()
+                );
+            }
+
+            reservation.setStatus(
+                    ReservationStatus.COMPENSATED
+            );
+
+            compensated.add(reservation);
+        }
+
+        if (!compensated.isEmpty()) {
+            emit(
+                    orderId,
+                    "INVENTORY_COMPENSATED",
+                    compensated
+            );
+        }
+
+        return compensated.stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -221,6 +333,55 @@ public class StockReservationService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    private void emit(
+            Long orderId,
+            String eventType,
+            List<StockReservation> reservations
+    ) {
+        if (outboxService == null) {
+            return;
+        }
+
+        List<Map<String, Object>> items =
+                reservations.stream()
+                        .map(reservation -> {
+                            Map<String, Object> item =
+                                    new LinkedHashMap<>();
+
+                            item.put(
+                                    "productId",
+                                    reservation.getProductId()
+                            );
+                            item.put(
+                                    "quantity",
+                                    reservation.getQuantity()
+                            );
+                            item.put(
+                                    "status",
+                                    reservation
+                                            .getStatus()
+                                            .name()
+                            );
+
+                            return item;
+                        })
+                        .toList();
+
+        Map<String, Object> payload =
+                new LinkedHashMap<>();
+
+        payload.put("orderId", orderId);
+        payload.put("items", items);
+
+        outboxService.enqueue(
+                "inventory.events",
+                "StockReservation",
+                orderId,
+                eventType,
+                payload
+        );
     }
 
     private void validateNoDuplicateProducts(

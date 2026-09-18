@@ -12,8 +12,10 @@ import com.ecommerce.payment_service.exception.ConflictException;
 import com.ecommerce.payment_service.exception.DownstreamServiceUnavailableException;
 import com.ecommerce.payment_service.exception.ResourceNotFoundException;
 import com.ecommerce.payment_service.mapper.PaymentMapper;
+import com.ecommerce.payment_service.outbox.OutboxService;
 import com.ecommerce.payment_service.repository.PaymentRepository;
 import com.ecommerce.payment_service.specification.PaymentSpecification;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -24,6 +26,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -33,7 +37,8 @@ public class PaymentService {
     private static final String MOCK_PROVIDER = "MOCK";
     private static final String PAYABLE_ORDER_STATUS = "PENDING";
 
-    private static final Set<PaymentStatus> NON_RETRYABLE_STATUSES =
+    private static final Set<PaymentStatus>
+    NON_RETRYABLE_STATUSES =
             EnumSet.of(
                     PaymentStatus.PENDING,
                     PaymentStatus.PROCESSING,
@@ -45,6 +50,8 @@ public class PaymentService {
     private final PaymentMapper paymentMapper;
     private final OrderClient orderClient;
 
+    private OutboxService outboxService;
+
     public PaymentService(
             PaymentRepository paymentRepository,
             PaymentMapper paymentMapper,
@@ -53,6 +60,13 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
         this.paymentMapper = paymentMapper;
         this.orderClient = orderClient;
+    }
+
+    @Autowired(required = false)
+    void setOutboxService(
+            OutboxService outboxService
+    ) {
+        this.outboxService = outboxService;
     }
 
     @Transactional
@@ -108,9 +122,12 @@ public class PaymentService {
                 .provider(MOCK_PROVIDER)
                 .build();
 
-        return paymentMapper.toResponse(
-                paymentRepository.save(payment)
-        );
+        Payment saved =
+                paymentRepository.save(payment);
+
+        emit(saved, "PAYMENT_CREATED");
+
+        return paymentMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -214,6 +231,8 @@ public class PaymentService {
             );
         }
 
+        emit(payment, "PAYMENT_PROCESSING");
+
         return paymentMapper.toResponse(payment);
     }
 
@@ -236,6 +255,8 @@ public class PaymentService {
         );
 
         payment.setFailureReason(null);
+
+        emit(payment, "PAYMENT_SUCCEEDED");
 
         return paymentMapper.toResponse(payment);
     }
@@ -261,6 +282,8 @@ public class PaymentService {
                 request.failureReason().trim()
         );
 
+        emit(payment, "PAYMENT_FAILED");
+
         return paymentMapper.toResponse(payment);
     }
 
@@ -277,6 +300,8 @@ public class PaymentService {
         payment.setStatus(
                 PaymentStatus.CANCELLED
         );
+
+        emit(payment, "PAYMENT_CANCELLED");
 
         return paymentMapper.toResponse(payment);
     }
@@ -295,7 +320,39 @@ public class PaymentService {
                 PaymentStatus.REFUNDED
         );
 
+        emit(payment, "PAYMENT_REFUNDED");
+
         return paymentMapper.toResponse(payment);
+    }
+
+    private void emit(
+            Payment payment,
+            String eventType
+    ) {
+        if (outboxService == null) {
+            return;
+        }
+
+        Map<String, Object> payload =
+                new LinkedHashMap<>();
+
+        payload.put("paymentId", payment.getId());
+        payload.put("orderId", payment.getOrderId());
+        payload.put("userId", payment.getUserId());
+        payload.put(
+                "status",
+                payment.getStatus().name()
+        );
+        payload.put("amount", payment.getAmount());
+        payload.put("currency", payment.getCurrency());
+
+        outboxService.enqueue(
+                "payment.events",
+                "Payment",
+                payment.getId(),
+                eventType,
+                payload
+        );
     }
 
     private Payment findPayment(Long id) {

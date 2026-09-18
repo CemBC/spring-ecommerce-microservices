@@ -1,0 +1,9 @@
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      group-id: saga-monitor
+      auto-offset-reset: earliest
+
+saga:
+  timeout-ms: ${SAGA_TIMEOUT_MS:60000}
