@@ -1,0 +1,86 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 5s
+
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowedOrigins:
+                  - ${ALLOWED_ORIGIN_1:http://localhost:3000}
+                  - ${ALLOWED_ORIGIN_2:http://localhost:5173}
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowedHeaders:
+                  - "*"
+                exposedHeaders:
+                  - X-Request-Id
+                allowCredentials: true
+                maxAge: 3600
+
+          routes:
+            - id: product-service-products
+              uri: ${PRODUCT_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/products/**
+
+            - id: product-service-categories
+              uri: ${PRODUCT_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/categories/**
+
+            - id: inventory-service
+              uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/inventory/**
+
+            - id: auth-service-auth
+              uri: ${AUTH_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/auth/**
+
+            - id: auth-service-admin
+              uri: ${AUTH_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/admin/**
+
+            - id: order-service
+              uri: ${ORDER_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/orders/**
+
+            - id: payment-service
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/payments/**
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,metrics
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      access: read-only
+
+logging:
+  level:
+    com.ecommerce.api_gateway: INFO
