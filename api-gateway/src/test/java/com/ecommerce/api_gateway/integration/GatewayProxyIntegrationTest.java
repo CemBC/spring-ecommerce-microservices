@@ -8,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -15,9 +17,17 @@ import reactor.core.publisher.Mono;
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.time.Instant;
+import java.util.Base64;
+
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 class GatewayProxyIntegrationTest {
+
+    private static final String TEST_SECRET =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     private static DisposableServer backend;
 
@@ -84,17 +94,63 @@ class GatewayProxyIntegrationTest {
 
     @Test
     void shouldForwardAuthorizationHeader() {
+        String token = createToken();
+
         webTestClient
                 .get()
                 .uri("/api/products/secure")
                 .header(
                         HttpHeaders.AUTHORIZATION,
-                        "Bearer integration-token"
+                        "Bearer " + token
                 )
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
-                .isEqualTo("authorization-forwarded");
+                .isEqualTo("Bearer " + token);
+    }
+
+    private String createToken() {
+        byte[] keyBytes =
+                Base64.getDecoder().decode(TEST_SECRET);
+
+        SecretKey secretKey =
+                new SecretKeySpec(
+                        keyBytes,
+                        "HmacSHA256"
+                );
+
+        JwtEncoder encoder =
+                NimbusJwtEncoder
+                        .withSecretKey(secretKey)
+                        .algorithm(MacAlgorithm.HS256)
+                        .build();
+
+        Instant now = Instant.now();
+
+        JwtClaimsSet claims =
+                JwtClaimsSet.builder()
+                        .subject("user@example.com")
+                        .issuedAt(now)
+                        .expiresAt(
+                                now.plusSeconds(900)
+                        )
+                        .claim("userId", 1L)
+                        .claim("role", "USER")
+                        .build();
+
+        JwsHeader header =
+                JwsHeader
+                        .with(MacAlgorithm.HS256)
+                        .build();
+
+        return encoder
+                .encode(
+                        JwtEncoderParameters.from(
+                                header,
+                                claims
+                        )
+                )
+                .getTokenValue();
     }
 
     private static synchronized void ensureBackend() {
@@ -105,15 +161,19 @@ class GatewayProxyIntegrationTest {
         backend = HttpServer.create()
                 .port(0)
                 .route(routes -> routes
+
                         .get(
                                 "/api/products/123",
                                 (request, response) -> {
+
                                     String requestId =
-                                            request.requestHeaders()
+                                            request
+                                                    .requestHeaders()
                                                     .get("X-Request-Id");
 
                                     if (requestId == null
                                             || requestId.isBlank()) {
+
                                         return response
                                                 .status(500)
                                                 .sendString(
@@ -132,6 +192,7 @@ class GatewayProxyIntegrationTest {
                                             );
                                 }
                         )
+
                         .get(
                                 "/api/products/conflict",
                                 (request, response) ->
@@ -143,6 +204,7 @@ class GatewayProxyIntegrationTest {
                                                         )
                                                 )
                         )
+
                         .get(
                                 "/api/products/not-found",
                                 (request, response) ->
@@ -154,17 +216,19 @@ class GatewayProxyIntegrationTest {
                                                         )
                                                 )
                         )
+
                         .get(
                                 "/api/products/secure",
                                 (request, response) -> {
+
                                     String authorization =
-                                            request.requestHeaders()
+                                            request
+                                                    .requestHeaders()
                                                     .get(
                                                             HttpHeaders.AUTHORIZATION
                                                     );
 
-                                    if (!"Bearer integration-token"
-                                            .equals(authorization)) {
+                                    if (authorization == null) {
                                         return response
                                                 .status(401)
                                                 .sendString(
@@ -178,7 +242,7 @@ class GatewayProxyIntegrationTest {
                                             .status(200)
                                             .sendString(
                                                     Mono.just(
-                                                            "authorization-forwarded"
+                                                            authorization
                                                     )
                                             );
                                 }

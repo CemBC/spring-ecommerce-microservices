@@ -26,7 +26,7 @@ class GatewayUnavailableServiceIntegrationTest {
             DynamicPropertyRegistry registry
     ) {
         registry.add(
-                "ORDER_SERVICE_URL",
+                "PRODUCT_SERVICE_URL",
                 () -> "http://localhost:" + UNUSED_PORT
         );
     }
@@ -35,7 +35,7 @@ class GatewayUnavailableServiceIntegrationTest {
     void shouldReturn503WhenDownstreamServiceIsUnavailable() {
         webTestClient
                 .get()
-                .uri("/api/orders/1")
+                .uri("/api/products/1")
                 .exchange()
                 .expectStatus().isEqualTo(503)
                 .expectHeader().contentTypeCompatibleWith("application/json")

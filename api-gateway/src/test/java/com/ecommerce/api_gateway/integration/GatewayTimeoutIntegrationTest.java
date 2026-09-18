@@ -44,7 +44,7 @@ class GatewayTimeoutIntegrationTest {
         ensureBackend();
 
         registry.add(
-                "ORDER_SERVICE_URL",
+                "PRODUCT_SERVICE_URL",
                 () -> "http://localhost:" + backend.port()
         );
 
@@ -58,7 +58,7 @@ class GatewayTimeoutIntegrationTest {
     void shouldReturn504WhenDownstreamResponseTimesOut() {
         webTestClient
                 .get()
-                .uri("/api/orders/slow")
+                .uri("/api/products/slow")
                 .exchange()
                 .expectStatus().isEqualTo(504)
                 .expectBody()
@@ -78,7 +78,7 @@ class GatewayTimeoutIntegrationTest {
                 .port(0)
                 .route(routes ->
                         routes.get(
-                                "/api/orders/slow",
+                                "/api/products/slow",
                                 (request, response) ->
                                         response
                                                 .status(200)
