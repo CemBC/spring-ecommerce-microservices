@@ -3,6 +3,8 @@ package com.ecommerce.order_service.client;
 import com.ecommerce.order_service.client.dto.ProductSnapshotResponse;
 import com.ecommerce.order_service.exception.DownstreamServiceUnavailableException;
 import com.ecommerce.order_service.exception.ResourceNotFoundException;
+import com.ecommerce.order_service.resilience.ResilienceExecutor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -13,16 +15,36 @@ import org.springframework.web.client.RestClientException;
 @Component
 public class ProductClient {
 
-    private final RestClient restClient;
+    private static final String CIRCUIT = "productService";
 
+    private final RestClient restClient;
+    private final ResilienceExecutor resilienceExecutor;
+
+    @Autowired
     public ProductClient(
-            @Qualifier("productRestClient")
-            RestClient restClient
+            @Qualifier("productRestClient") RestClient restClient,
+            ResilienceExecutor resilienceExecutor
     ) {
         this.restClient = restClient;
+        this.resilienceExecutor = resilienceExecutor;
+    }
+
+    ProductClient(RestClient restClient) {
+        this(
+                restClient,
+                ResilienceExecutor.noop()
+        );
     }
 
     public ProductSnapshotResponse getProduct(Long productId) {
+        return resilienceExecutor.executeRead(
+                CIRCUIT,
+                "Product Service is unavailable",
+                () -> getProductOnce(productId)
+        );
+    }
+
+    private ProductSnapshotResponse getProductOnce(Long productId) {
         try {
             ProductSnapshotResponse product =
                     restClient.get()

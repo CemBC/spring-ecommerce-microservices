@@ -55,17 +55,17 @@ class GatewayTimeoutIntegrationTest {
     }
 
     @Test
-    void shouldReturn504WhenDownstreamResponseTimesOut() {
+    void shouldReturn503WhenDownstreamResponseTimesOut() {
         webTestClient
                 .get()
                 .uri("/api/products/slow")
                 .exchange()
-                .expectStatus().isEqualTo(504)
+                .expectStatus().isEqualTo(503)
                 .expectBody()
-                .jsonPath("$.status").isEqualTo(504)
+                .jsonPath("$.status").isEqualTo(503)
                 .jsonPath("$.message")
                 .isEqualTo(
-                        "Downstream service response timed out"
+                        "product-service is temporarily unavailable"
                 );
     }
 

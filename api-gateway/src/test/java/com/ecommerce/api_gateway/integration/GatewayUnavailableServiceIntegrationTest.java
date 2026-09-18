@@ -16,7 +16,8 @@ import java.net.ServerSocket;
 @AutoConfigureWebTestClient
 class GatewayUnavailableServiceIntegrationTest {
 
-    private static final int UNUSED_PORT = findUnusedPort();
+    private static final int UNUSED_PORT =
+            findUnusedPort();
 
     @Autowired
     private WebTestClient webTestClient;
@@ -27,28 +28,48 @@ class GatewayUnavailableServiceIntegrationTest {
     ) {
         registry.add(
                 "PRODUCT_SERVICE_URL",
-                () -> "http://localhost:" + UNUSED_PORT
+                () ->
+                        "http://localhost:"
+                                + UNUSED_PORT
         );
     }
 
     @Test
     void shouldReturn503WhenDownstreamServiceIsUnavailable() {
+
         webTestClient
                 .get()
                 .uri("/api/products/1")
                 .exchange()
-                .expectStatus().isEqualTo(503)
-                .expectHeader().contentTypeCompatibleWith("application/json")
+                .expectStatus()
+                .isEqualTo(503)
+                .expectHeader()
+                .contentTypeCompatibleWith(
+                        "application/json"
+                )
                 .expectBody()
-                .jsonPath("$.status").isEqualTo(503)
+                .jsonPath("$.status")
+                .isEqualTo(503)
+                .jsonPath("$.error")
+                .isEqualTo(
+                        "Service Unavailable"
+                )
                 .jsonPath("$.message")
-                .isEqualTo("Downstream service is unavailable");
+                .isEqualTo(
+                        "product-service is temporarily unavailable"
+                );
     }
 
     private static int findUnusedPort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
+
+        try (
+                ServerSocket socket =
+                        new ServerSocket(0)
+        ) {
             return socket.getLocalPort();
+
         } catch (IOException ex) {
+
             throw new IllegalStateException(
                     "Could not allocate an unused port",
                     ex

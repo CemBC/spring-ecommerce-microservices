@@ -5,6 +5,8 @@ import com.ecommerce.order_service.client.dto.InventoryReservationRequest;
 import com.ecommerce.order_service.dto.CreateOrderItemRequest;
 import com.ecommerce.order_service.exception.ConflictException;
 import com.ecommerce.order_service.exception.DownstreamServiceUnavailableException;
+import com.ecommerce.order_service.resilience.ResilienceExecutor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -17,13 +19,25 @@ import java.util.List;
 @Component
 public class InventoryClient {
 
-    private final RestClient restClient;
+    private static final String CIRCUIT = "inventoryService";
 
+    private final RestClient restClient;
+    private final ResilienceExecutor resilienceExecutor;
+
+    @Autowired
     public InventoryClient(
-            @Qualifier("inventoryRestClient")
-            RestClient restClient
+            @Qualifier("inventoryRestClient") RestClient restClient,
+            ResilienceExecutor resilienceExecutor
     ) {
         this.restClient = restClient;
+        this.resilienceExecutor = resilienceExecutor;
+    }
+
+    InventoryClient(RestClient restClient) {
+        this(
+                restClient,
+                ResilienceExecutor.noop()
+        );
     }
 
     public void reserveOrder(
@@ -43,6 +57,35 @@ public class InventoryClient {
                                 .toList()
                 );
 
+        // POST: protected by circuit breaker, intentionally no automatic retry.
+        resilienceExecutor.executeWriteVoid(
+                CIRCUIT,
+                "Inventory Service is unavailable",
+                () -> reserveOnce(request)
+        );
+    }
+
+    public void releaseOrder(Long orderId) {
+        // POST: no retry to avoid duplicate side effects.
+        resilienceExecutor.executeWriteVoid(
+                CIRCUIT,
+                "Inventory Service is unavailable",
+                () -> releaseOnce(orderId)
+        );
+    }
+
+    public void confirmOrder(Long orderId) {
+        // POST: no retry to avoid duplicate stock consumption.
+        resilienceExecutor.executeWriteVoid(
+                CIRCUIT,
+                "Inventory Service is unavailable",
+                () -> confirmOnce(orderId)
+        );
+    }
+
+    private void reserveOnce(
+            InventoryReservationRequest request
+    ) {
         try {
             restClient.post()
                     .uri("/api/inventory/reservations")
@@ -74,7 +117,7 @@ public class InventoryClient {
         }
     }
 
-    public void releaseOrder(Long orderId) {
+    private void releaseOnce(Long orderId) {
         try {
             restClient.post()
                     .uri(
@@ -102,7 +145,7 @@ public class InventoryClient {
         }
     }
 
-    public void confirmOrder(Long orderId) {
+    private void confirmOnce(Long orderId) {
         try {
             restClient.post()
                     .uri(

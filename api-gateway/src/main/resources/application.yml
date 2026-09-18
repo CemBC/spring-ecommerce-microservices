@@ -36,36 +36,176 @@ spring:
               uri: ${PRODUCT_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/api/products/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: productGateway
+                    fallbackUri: forward:/fallback/product-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: product-service-categories
               uri: ${PRODUCT_SERVICE_URL:http://localhost:8081}
               predicates:
                 - Path=/api/categories/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: productGateway
+                    fallbackUri: forward:/fallback/product-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: inventory-service
               uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/inventory/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: inventoryGateway
+                    fallbackUri: forward:/fallback/inventory-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: auth-service-auth
               uri: ${AUTH_SERVICE_URL:http://localhost:8083}
               predicates:
                 - Path=/api/auth/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: authGateway
+                    fallbackUri: forward:/fallback/auth-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: auth-service-admin
               uri: ${AUTH_SERVICE_URL:http://localhost:8083}
               predicates:
                 - Path=/api/admin/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: authGateway
+                    fallbackUri: forward:/fallback/auth-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: order-service
               uri: ${ORDER_SERVICE_URL:http://localhost:8084}
               predicates:
                 - Path=/api/orders/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: orderGateway
+                    fallbackUri: forward:/fallback/order-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
             - id: payment-service
               uri: ${PAYMENT_SERVICE_URL:http://localhost:8085}
               predicates:
                 - Path=/api/payments/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: paymentGateway
+                    fallbackUri: forward:/fallback/payment-service
+                    statusCodes:
+                      - INTERNAL_SERVER_ERROR
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                - name: Retry
+                  args:
+                    retries: 1
+                    series: SERVER_ERROR
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 250ms
+                      factor: 2
+                      basedOnPreviousValue: false
 
 server:
   port: 8080
@@ -88,3 +228,44 @@ logging:
 security:
   jwt:
     secret: ${JWT_SECRET}
+
+# Spring Cloud CircuitBreaker uses Resilience4j underneath.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      productGateway:
+        baseConfig: default
+      inventoryGateway:
+        baseConfig: default
+      authGateway:
+        baseConfig: default
+      orderGateway:
+        baseConfig: default
+      paymentGateway:
+        baseConfig: default
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+        cancelRunningFuture: true
+    instances:
+      productGateway:
+        baseConfig: default
+      inventoryGateway:
+        baseConfig: default
+      authGateway:
+        baseConfig: default
+      orderGateway:
+        baseConfig: default
+      paymentGateway:
+        baseConfig: default
