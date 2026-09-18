@@ -14,40 +14,104 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex) {
-        return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    public ResponseEntity<ApiError> handleNotFound(
+            ResourceNotFoundException ex
+    ) {
+        return build(
+                HttpStatus.NOT_FOUND,
+                ex.getMessage()
+        );
     }
 
-    @ExceptionHandler({ConflictException.class, ObjectOptimisticLockingFailureException.class})
-    public ResponseEntity<ApiError> handleConflict(Exception ex) {
-        String message = ex instanceof ObjectOptimisticLockingFailureException
-                ? "Inventory was modified by another request. Please retry."
-                : ex.getMessage();
-        return build(HttpStatus.CONFLICT, message);
+    @ExceptionHandler({
+            ConflictException.class,
+            ObjectOptimisticLockingFailureException.class
+    })
+    public ResponseEntity<ApiError> handleConflict(
+            Exception ex
+    ) {
+        String message =
+                ex instanceof ObjectOptimisticLockingFailureException
+                        ? "Inventory was modified by another request. Please retry."
+                        : ex.getMessage();
+
+        return build(
+                HttpStatus.CONFLICT,
+                message
+        );
+    }
+
+    @ExceptionHandler(
+            DownstreamServiceUnavailableException.class
+    )
+    public ResponseEntity<ApiError>
+    handleDownstreamUnavailable(
+            DownstreamServiceUnavailableException ex
+    ) {
+        return build(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ex.getMessage()
+        );
     }
 
     @ExceptionHandler(InsufficientStockException.class)
-    public ResponseEntity<ApiError> handleInsufficientStock(InsufficientStockException ex) {
-        return build(HttpStatus.CONFLICT, ex.getMessage());
+    public ResponseEntity<ApiError>
+    handleInsufficientStock(
+            InsufficientStockException ex
+    ) {
+        return build(
+                HttpStatus.CONFLICT,
+                ex.getMessage()
+        );
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .collect(Collectors.joining(", "));
-        return build(HttpStatus.BAD_REQUEST, message);
+    @ExceptionHandler(
+            MethodArgumentNotValidException.class
+    )
+    public ResponseEntity<ApiError> handleValidation(
+            MethodArgumentNotValidException ex
+    ) {
+        String message =
+                ex.getBindingResult()
+                        .getFieldErrors()
+                        .stream()
+                        .map(error ->
+                                error.getField()
+                                        + ": "
+                                        + error.getDefaultMessage()
+                        )
+                        .collect(
+                                Collectors.joining(", ")
+                        );
+
+        return build(
+                HttpStatus.BAD_REQUEST,
+                message
+        );
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleUnexpected(Exception ex) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+    public ResponseEntity<ApiError> handleUnexpected(
+            Exception ex
+    ) {
+        return build(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred"
+        );
     }
 
-    private ResponseEntity<ApiError> build(HttpStatus status, String message) {
-        return ResponseEntity.status(status)
-                .body(new ApiError(status.value(), message, LocalDateTime.now()));
+    private ResponseEntity<ApiError> build(
+            HttpStatus status,
+            String message
+    ) {
+        return ResponseEntity
+                .status(status)
+                .body(
+                        new ApiError(
+                                status.value(),
+                                message,
+                                LocalDateTime.now()
+                        )
+                );
     }
 }
